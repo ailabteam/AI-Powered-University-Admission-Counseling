@@ -1,4 +1,9 @@
 # app.py
+import os
+# Đặt biến môi trường NGAY LẬP TỨC, trước khi torch được import
+# Điều này đảm bảo toàn bộ ứng dụng chỉ sử dụng GPU 1
+os.environ["CUDA_VISIBLE_DEVICES"] = "1" 
+
 import streamlit as st
 from src.pipeline import QAPipeline
 
@@ -9,37 +14,49 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- State Management ---
-# Lưu trữ pipeline trong session state để không phải tải lại model mỗi lần re-run
-if 'pipeline' not in st.session_state:
-    with st.spinner("Khởi tạo Mentor AI... Quá trình này có thể mất vài phút."):
-        st.session_state.pipeline = QAPipeline()
-        
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# --- State Management & Caching ---
+# Sử dụng @st.cache_resource để khởi tạo pipeline một lần và tái sử dụng
+@st.cache_resource
+def load_pipeline():
+    """Tải pipeline và cache lại."""
+    print("--- First time initialization: Loading QA Pipeline... ---")
+    return QAPipeline()
 
 # --- UI Components ---
 st.title("🎓 Mentor AI - Trợ lý Tư vấn Tuyển sinh ĐH Bách khoa Đà Nẵng")
-st.markdown("Chào mừng bạn! Hãy đặt câu hỏi về thông tin tuyển sinh của Trường Đại học Bách khoa - ĐH Đà Nẵng.")
+st.markdown("""
+Chào mừng bạn! Tôi là Mentor AI, trợ lý ảo sẵn sàng giải đáp các thắc mắc về tuyển sinh của Trường. 
+Hãy đặt câu hỏi của bạn vào khung chat bên dưới nhé.
+""")
 
-# Display chat messages from history on app rerun
+# Tải pipeline từ cache
+try:
+    pipeline = load_pipeline()
+except Exception as e:
+    st.error(f"Lỗi khởi tạo hệ thống AI: {e}")
+    st.stop()
+
+# Khởi tạo lịch sử chat
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Hiển thị các tin nhắn cũ
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# React to user input
-if prompt := st.chat_input("Câu hỏi của bạn là gì?"):
-    # Display user message in chat message container
+# Nhận input từ người dùng
+if prompt := st.chat_input("Nhập câu hỏi của bạn về tuyển sinh..."):
+    # Hiển thị tin nhắn của người dùng
     st.chat_message("user").markdown(prompt)
-    # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Get assistant response
-    with st.spinner("Mentor AI đang suy nghĩ..."):
-        response = st.session_state.pipeline.ask(prompt)
-    
-    # Display assistant response in chat message container
+    # Tạo và hiển thị câu trả lời của trợ lý AI
     with st.chat_message("assistant"):
-        st.markdown(response)
-    # Add assistant message to chat history
+        with st.spinner("Mentor AI đang suy nghĩ..."):
+            result_dict = pipeline.ask(prompt)
+            response = result_dict.get("answer", "Xin lỗi, tôi gặp sự cố khi tạo câu trả lời.")
+            st.markdown(response)
+    
+    # Thêm câu trả lời vào lịch sử chat
     st.session_state.messages.append({"role": "assistant", "content": response})

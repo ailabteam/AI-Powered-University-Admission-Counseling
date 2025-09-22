@@ -2,6 +2,7 @@
 from src.retriever import FaissRetriever
 from src.generator import LLMGenerator
 from src.config import PROMPT_TEMPLATE, TOP_K_RETRIEVER
+from typing import Dict, Any, List
 
 class QAPipeline:
     """
@@ -13,33 +14,34 @@ class QAPipeline:
         self.generator = LLMGenerator()
         print("QA Pipeline initialized successfully.")
 
-    def _format_context(self, contexts: list) -> str:
+    def _format_context(self, contexts: List[str]) -> str:
         """Formats the retrieved contexts into a single string for the prompt."""
-        return "\n\n".join([f"Nguồn {i+1}:\n{ctx}" for i, ctx in enumerate(contexts)])
+        return "\n\n".join([f"--- Nguồn tham khảo {i+1} ---\n{ctx}" for i, ctx in enumerate(contexts)])
 
-    def ask(self, question: str) -> str:
+    def ask(self, question: str) -> Dict[str, Any]:
         """
-        The main method to ask a question and get an answer.
+        Asks a question and returns a dictionary with the answer and debug info.
         
         Args:
             question (str): The user's question.
             
         Returns:
-            str: The final answer.
+            Dict[str, Any]: A dictionary containing the answer, retrieved contexts, and the final prompt.
         """
         # 1. Retrieve relevant contexts
-        contexts = self.retriever.search(question, top_k=TOP_K_RETRIEVER)
+        retrieved_contexts = self.retriever.search(question, top_k=TOP_K_RETRIEVER)
         
         # 2. Format the contexts for the prompt
-        formatted_context = self._format_context(contexts)
+        formatted_context = self._format_context(retrieved_contexts)
         
         # 3. Create the final prompt
-        prompt = PROMPT_TEMPLATE.format(context=formatted_context, question=question)
-        print("\n--- Final Prompt to LLM ---")
-        print(prompt)
-        print("---------------------------\n")
+        final_prompt = PROMPT_TEMPLATE.format(context=formatted_context, question=question)
         
         # 4. Generate the answer
-        answer = self.generator.generate(prompt)
+        answer = self.generator.generate(final_prompt)
         
-        return answer
+        return {
+            "answer": answer,
+            "retrieved_contexts": retrieved_contexts,
+            "prompt": final_prompt
+        }
